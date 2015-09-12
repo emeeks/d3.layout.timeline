@@ -4,6 +4,8 @@ Timelines come in all shapes and sizes. One of the most common and popular is th
 
 ![d3.layout.timeline](timeline.png "d3.layout.timeline")
 
+`npm install d3-layout-timeline`
+
 [Simple example using integers for start and end](http://bl.ocks.org/emeeks/d24171dac80dd535521b)
 
 [Example showing padding, maximum band height and fixed extent](http://bl.ocks.org/emeeks/221c931a1cd8c040d8e7)

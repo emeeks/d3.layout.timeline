@@ -1,6 +1,6 @@
 {
   "name": "d3-layout-timeline",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A layout for producing band-style timelines",
   "main": "index.js",
   "keywords": [
