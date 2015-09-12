@@ -1,0 +1,987 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Improving a circle pack</title>
+  <meta charset="utf-8" />
+    <link type="text/css" rel="stylesheet" href="noceiling.css" />
+    <style type="text/css">
+      g.sketchy-stroke > path {
+        fill: none;
+        stroke: black;
+        stroke-width: 1px;
+        stroke-opacity: 0.75;
+      }
+      path.sketchy-stroke, path.sketchy-fill, path.original {
+        fill: none;
+        stroke: black;
+        stroke-width: 1px;
+        stroke-opacity: 0.75;
+      }
+      svg {
+        height: 1100px;
+        width: 1100px;
+      }
+      div.viz {
+        height: 1000px;
+        width: 1000px;
+      }
+      </style>
+</head>
+
+<script src="d3.v3.min.js" type="text/JavaScript"></script>
+<script src="d3.sketchy.js" charset="utf-8" type="text/javascript"></script>
+<script src="d3.legend.js" charset="utf-8" type="text/javascript"></script>
+
+<script>
+
+step = 1500;
+
+geodata = [];
+mainData = [];
+countryHash = {};
+sketchy = d3sketchy();
+pathUID = 0;
+
+  colors = d3.scale.ordinal().range(["#159eb7","#27552d", "#e46538", "#96bb77", "#e5e36e", "#e6a19f"]);
+  nodeColor="#e46538";
+//  leafColorArray=["#033b2d","#36611b","#72972f","#cdc597"];
+  leafColorArray=["low","medium","high","very high"];
+
+function cheapSketchy(path) {
+  var length = path.getTotalLength();
+  var drawCode = "";
+  var x = 0;
+  var step = 2;
+
+  while (x < length / 2) {
+    var start = path.getPointAtLength(x);
+    var end = path.getPointAtLength(length - x);
+
+    drawCode += " M" + (start.x + (Math.random() * step - step/2)) + " " + (start.y + (Math.random() * step - step/2)) + "L" + (end.x + (Math.random() * step - step/2)) + " " + (end.y + (Math.random() * step - step/2));
+
+    x += step + (Math.random() * step);
+  }
+
+  return drawCode;
+}
+
+function sketchyFromPath(path, container, color) {
+
+  var j = 10;
+  var x = 0;
+  var length = path.getTotalLength();
+  var pointsArray = [];
+
+  while (x < length) {
+    newPoint = path.getPointAtLength(x);
+    pointsArray.push({x: newPoint.x, y: newPoint.y})
+    x += j + (Math.random() * (j));
+  }
+  pointsArray.push(path.getPointAtLength(length));
+
+  var line = d3.svg.line()
+  .x(function(d) { return d.x; })
+  .y(function(d) { return d.y; })
+  .interpolate("cardinal-closed");
+
+  var drawCode = cheapSketchy(path);
+
+
+  container.select("path.sketchy-stroke").remove();
+
+  container.select("path.sketchy-fill").remove();
+
+  container.append("path")
+  .attr("class", "sketchy-fill")
+  .style("stroke", color).style("stroke-opacity", 0.5)
+  .attr("d", drawCode);
+
+  var paths = sketchy.alterPath({path:pointsArray, count:1, density:5, sketch:1});
+
+  for(var i = 0; i<paths.length; i++){
+    container.append("path")
+      .attr("class", "sketchy-stroke")
+      .attr("d", line(paths[i]));
+  }
+
+
+}
+
+function transition(path) {
+  path.transition()
+      .duration(7500)
+      .attrTween("stroke-dasharray", tweenDash)
+      .each("end", function() { d3.select(this).call(transition); });
+}
+
+function tweenDash() {
+  var l = this.getTotalLength(),
+      i = d3.interpolateString("0," + l, l + "," + l);
+  return function(t) { return i(t); };
+}
+
+function jitterLine(pathNode) {
+  var length = pathNode.getTotalLength();
+  var j = 1;
+  var x = j + (Math.random() * (j * 5));
+  var jitteredPoints = [];
+  var lineGen = d3.svg.line()
+  .x(function (d) {return d.x})
+  .y(function (d) {return d.y}).interpolate("basis");
+
+  var newPoint = pathNode.getPointAtLength(0);
+  jitteredPoints.push(newPoint);
+
+  while (x < length) {
+    newPoint = pathNode.getPointAtLength(x);
+    var newX = newPoint.x + ((Math.random() * j) - j/2);
+    var newY = newPoint.y + ((Math.random() * j) - j/2)
+    jitteredPoints.push({x: newX, y: newY})
+    x += j + (Math.random() * (j * 5));
+  }
+  newPoint = pathNode.getPointAtLength(length);
+  jitteredPoints.push(newPoint);
+
+  return lineGen(jitteredPoints);
+}
+
+function newDataset(datasetname) {
+  activeDatasetName = datasetname;
+  d3.json("data/json/" + datasetname + ".json", function(data) {
+    activeDataset = data;
+    updateMarkers();
+  })
+}
+
+d3.json("world.topojson", function(data) {
+  geodata = data;
+  geodata.objects.world.geometries.forEach(function (d) {
+    countryHash[d.properties.iso] = d.properties;
+  });
+  loadData();
+})
+
+function loadData() {
+  d3.json("data/json/LF15TO24.json", function(data) {
+    activeDataset = data;
+    visualizeSomeData(data);
+  })
+}
+
+// slum pop: SLPOPURB
+// rape LF15TO24
+
+function visualizeSomeData(data) {
+  for (x in data) {
+    var mappedData =[];
+    for (y in data[x]) {
+      mappedData.push({year: parseInt(y), value: data[x][y]});
+    }
+    mainData.push({"LF15TO24": mappedData, node: countryHash[x] ? countryHash[x] : {label: x, iso: x, pop: 2000000, gdp: 0}})
+  }
+  mainData.sort(function (a,b) {
+    if (a.node.pop > b.node.pop) {
+      return -1;
+    }
+    if (a.node.pop < b.node.pop) {
+      return 1;
+    }
+    return 1;
+  });
+
+  packableData = nesting(mainData);
+circlePack0()
+
+}
+
+function sketchyFullCircle(d, i, colors, leafColors, container) {
+
+  var avVal = 0;
+  var fillColor = colors(i);
+
+  if (d.depth === 3) {
+    avVal = d3.mean(d["LF15TO24"], function (p) {return p.value});
+    fillColor = leafColors(avVal);
+  }
+
+  if (d.depth === 2) {
+    fillColor = d.key;
+  }
+
+  if (d.depth === 3) {
+    fillColor = "black";
+  }
+
+  if (d.norenderfill !== true) {
+    //sketchy.circleFill({svg: container, x:d.x, y:d.y, r:d.r, density:2, sketch:0.01, angle: (Math.random() * 100)});
+  }
+
+
+  d3.selectAll("g")
+  .filter(function () {
+    return d3.select(this).classed("not-sketchy") === false && d3.select(this).classed("sketchy-stroke") === false
+  })
+  .each(function () {
+      d3.select(this)
+      .selectAll("path")
+      .attr("class", "sketchy-fill")
+      .style("stroke", fillColor);
+  });
+
+  if (d.norenderstroke !== true) {
+  var drawCode = sketchy.circleStroke({svg: container, x:0, y:0, r:d.r, density: Math.round(d.sketchiness / 2), sketch: d.sketchiness / 2});
+    container.append('path')
+      .attr("class", "sketchy-stroke")
+      .attr('d', drawCode);
+  }
+
+  container
+  .selectAll("g")
+  .each(function () {
+    if (d3.select(this).classed("not-sketchy") === false && d3.select(this).classed("sketchy-fill") === false) {
+      strokeColor = d.depth == 2 ? "white" : "black"
+      d3.select(this)
+      .attr("class", "sketchy-stroke");
+    }
+  });
+
+}
+
+
+function nesting(data) {
+  leafColors = d3.scale.quantize().domain(
+    mainData.map(function(d) {return d3.mean(d["LF15TO24"], function (p) {return p.value})})
+    )
+    .range(leafColorArray);
+
+    mainData.forEach(function(d) {
+      d.meanval = d3.mean(d["LF15TO24"], function (p) {return p.value});
+      d.stdval = d3.deviation(d["LF15TO24"], function (p) {return p.value});
+      d.minval = d3.min(d["LF15TO24"], function (p) {return p.value});
+      d.maxval = d3.max(d["LF15TO24"], function (p) {return p.value});
+    })
+
+    deviationScale = d3.scale.linear()
+      .domain(d3.extent(mainData, function (d) {return d.stdval}))
+      .range([1,6]);
+
+    nestedData = d3.nest()
+    .key(function(d) {return d.node.stats_r})
+    .key(function (d) {
+      avVal = d3.mean(d["LF15TO24"], function (p) {return p.value});
+      return leafColors(avVal);
+    })
+    .entries(mainData);
+
+    nestedData.forEach(function (nested) {
+      nested.id = nested.key;
+      nested.values.forEach(function (secondNested) {
+        secondNested.id = secondNested.key + "-" + nested.key;
+      })
+    });
+
+    packableData = {id: "root", key: "root", values: nestedData}
+
+  return packableData
+}
+
+function nestingSecond(data) {
+  leafColors = d3.scale.quantize().domain(
+    mainData.map(function(d) {return d3.mean(d["LF15TO24"], function (p) {return p.value})})
+    )
+    .range(leafColorArray);
+
+    nestedData = d3.nest()
+    .key(function (d) {
+      avVal = d3.mean(d["LF15TO24"], function (p) {return p.value});
+      return leafColors(avVal);
+    })
+    .key(function(d) {return d.node.stats_r})
+    .entries(mainData);
+
+    nestedData.forEach(function (nested) {
+      nested.id = nested.key;
+      nested.values.forEach(function (secondNested) {
+        if (secondNested.key === "undefined") {
+          secondNested.key = "other";
+        }
+        secondNested.id = secondNested.key + "-" + nested.key;
+      })
+    });
+
+    packableData = {id: "root", key: "root", values: nestedData}
+
+  return packableData
+}
+
+
+  colorHash={
+    "very high": "#033b2d",
+    high: "#36611b",
+    medium: "#72972f",
+    low: "#b8ca84"};
+
+  leafColors = d3.scale.quantile().domain(
+    mainData.map(function(d) {return d.node.pop})
+    )
+  .range(leafColorArray);
+
+  gdps = mainData.map(function(d) {return parseFloat(d.node.gdp)});
+  
+  sizeScale = d3.scale.linear().domain([0,350000000,1300000000]).range([0.5,40,80])
+
+  leafSymbol = d3.scale.threshold().domain([50,500,5000,50000])
+  .range(["triangle-down","triange-up","circle","cross"]);
+
+
+function circlePack0() {
+  packChart = d3.layout.pack();
+  packChart.size([1000,1000])
+  .children(function(d) {return d.values})
+  .padding(0)
+  .value(function (d) {return 1})
+
+d3.select("svg")
+  .append("g")
+  .attr("transform", "translate(20,20)")
+  .attr("class", "circlepack")
+  .selectAll("circle")
+  .data(packChart(packableData), function (d) {return d.node ? d.node.iso : d.id})
+  .enter()
+  .append("circle")
+  .attr("cx", function (d) {return d.x})
+  .attr("cy", function (d) {return d.y})
+  .attr("r", function (d) {return d.r})
+  .style("fill", "white")
+  .style("stroke", "black")
+  .style("stroke-width", "2px")
+
+}
+
+function circlePack1() {
+  packChart = d3.layout.pack();
+  packChart.size([1000,1000])
+  .children(function(d) {return d.values})
+  .padding(0)
+  .value(function(d) {return d.node ? d.node.pop === 0 ? 5000000 : d.node.pop : undefined})
+
+  d3.select("g.circlepack")
+  .selectAll("circle")
+  .data(packChart(packableData), function (d) {return d.node ? d.node.iso : d.id})
+  .transition()
+  .duration(step)
+  .attr("cx", function (d) {return d.x})
+  .attr("cy", function (d) {return d.y})
+  .attr("r", function (d) {return d.r})
+}
+
+function circlePack2() {
+
+  leafColorAV = d3.scale.threshold().domain([500,5000,50000])
+  .range(["yellow","orange","red"]);
+
+  d3.select("g.circlepack")
+  .selectAll("circle")
+  .data(packChart(packableData), function (d) {return d.node ? d.node.iso : d.id})
+  .transition()
+  .duration(step)
+  .style("fill", function (d, i) {
+    var fillColor = colors(i);
+    if (d.depth === 3) {
+      fillColor = leafColorAV(d.node.gdp);
+    }
+
+    if (d.depth === 2) {
+      fillColor = colorHash[d.key];
+    }
+
+    if (d.depth === 1) {
+      fillColor = "#E1E1D3";
+   }
+
+    if (d.depth === 0) {
+      fillColor = "#EFEFF3";
+    }
+    return fillColor;
+  })
+}
+
+function circlePack3() {
+  d3.select("g.circlepack")
+    .selectAll("circle")
+    .transition()
+    .duration(step)
+    .style("fill-opacity", function (d) {return d.depth == 0 ? 0 : 1})
+    .style("stroke-opacity", function (d) {return d.depth == 0 ? 0 : 1})
+
+}
+
+function circlePack4() {
+  d3.select("g.circlepack")
+    .selectAll("circle")
+    .transition()
+    .duration(step)
+    .style("fill-opacity", function (d) {return d.depth == 0 || d.depth == 3 ? 0 : 1})
+    .style("stroke-opacity", function (d) {return d.depth == 0 ? 0 : 1})
+
+}
+
+function circlePack5() {
+  d3.select("g.circlepack")
+    .selectAll("circle")
+    .transition()
+    .duration(step)
+    .style("fill-opacity", function (d) {return d.depth == 0 || d.depth == 1 || d.depth == 3 ? 0 : 1})
+    .style("stroke-opacity", function (d) {return d.depth == 0 ? 0 : 1})
+}
+
+function circlePack6() {
+  packChart = d3.layout.pack();
+  packChart.size([1000,1000])
+  .children(function(d) {return d.values})
+  .padding(10)
+  .value(function(d) {return d.node ? d.node.pop === 0 ? 5000000 : d.node.pop : undefined})
+
+  d3.select("g.circlepack")
+  .selectAll("circle")
+  .data(packChart(packableData), function (d) {return d.node ? d.node.iso : d.id})
+  .transition()
+  .duration(step)
+  .attr("cx", function (d) {return d.x})
+  .attr("cy", function (d) {return d.y})
+  .attr("r", function (d) {return d.r})
+}
+
+function circlePack7() {
+  packChart = d3.layout.pack();
+  packChart.size([1000,1000])
+  .children(function(d) {return d.values})
+  .padding(5)
+  .value(function(d) {return d.node ? d.node.pop === 0 ? 5000000 : d.node.pop : undefined})
+
+  d3.select("g.circlepack")
+  .selectAll("circle")
+  .data(packChart(packableData), function (d) {return d.node ? d.node.iso : d.id})
+  .transition()
+  .duration(step)
+  .attr("cx", function (d) {return d.x})
+  .attr("cy", function (d) {return d.y})
+  .attr("r", function (d) {return d.r})
+}
+
+function circlePack8() {
+  d3.select("g.circlepack")
+  .selectAll("text.bg")
+  .data(packChart(packableData), function (d) {return d.node ? d.node.iso : d.id})
+  .enter()
+  .append("text")
+  .attr("class", "bg")
+  .style("display", function (d) {return d.depth == 1 ? "block" : "none"})
+  .style("text-anchor", "middle")
+  .attr("x", function (d) {return d.x})
+  .attr("y", function (d) {return d.y - (d.r * .8)})
+  .style("font-size", function (d) {return d.r / 4})
+  .style("stroke", "white")
+  .style("fill", "white")
+  .style("stroke-width", "2px")
+  .style("opacity", 0)
+  .text(function (d) {return d.key})
+  .transition().duration(step)
+  .style("opacity", .8)
+
+
+  d3.select("g.circlepack")
+  .selectAll("text.fg")
+  .data(packChart(packableData), function (d) {return d.node ? d.node.iso : d.id})
+  .enter()
+  .append("text")
+  .attr("class", "fg")
+  .style("display", function (d) {return d.depth == 1 ? "block" : "none"})
+  .style("text-anchor", "middle")
+  .attr("x", function (d) {return d.x})
+  .attr("y", function (d) {return d.y - (d.r * .8)})
+  .style("font-size", function (d) {return d.r / 4})
+  .style("opacity", 0)
+  .text(function (d) {return d.key})
+  .transition().duration(step)
+  .style("opacity", 1)
+}
+
+function circlePack9() {
+  d3.select("svg").append("g")
+  .attr("class", "legendQuant")
+  .attr("transform", "translate(720,580)")
+  .style("opacity", 0)
+  .transition()
+  .duration(step)
+  .style("opacity", 1);
+
+  reverseColors = leafColorArray.map(function (d) {return colorHash[d]}).reverse();
+
+  legendColorsLegendScale = d3.scale.quantize().domain(
+    mainData.map(function(d) {return d.meanval})
+    )
+  .range(reverseColors);
+
+var legend = d3.legend.color()
+  .labelFormat(function (d) {return d3.format(".1f")(d) + "%"})
+  .shapeWidth(40)
+  .shapeHeight(40)
+  .scale(legendColorsLegendScale);
+
+d3.select("svg").select(".legendQuant")
+  .call(legend);
+
+  var linearSize = d3.scale.linear().domain([0,10]).range([10, 30]);
+
+d3.select("svg").append("g")
+  .attr("class", "legendSize")
+  .attr("transform", "translate(520, 980)")
+  .style("opacity", 0)
+  .transition()
+  .duration(step)
+  .style("opacity", 1);
+
+var legendSize = d3.legend.size()
+  .scale(sizeScale)
+  .shape('circle')
+  .shapePadding(15)
+  .labelOffset(20)
+  .cells([100000000,300000000,600000000,1000000000])
+  .orient('horizontal')
+  .labelFormat(function (d) {return Math.floor(d / 1000000) + "m"});
+
+d3.select("svg").select(".legendSize")
+  .call(legendSize)
+  .selectAll("circle")
+  .style("fill", "white")
+  .style("stroke", "black")
+  .style("stroke-width", "1px");
+}
+
+function circlePack10() {
+    d3.select("g.circlepack")
+    .selectAll("circle")
+  .each(function (d) {
+    if (d.depth === 3) {
+      d3.select(this).transition().duration(step).style("opacity", 0);
+
+      gdpSymbol = d3.svg.symbol().type(leafSymbol(d.node.gdp)).size(2);
+        d3.select("g.circlepack").append("path")
+        .attr("d", gdpSymbol)
+        .style("fill", "none")
+      .style("stroke", "black")
+      .style("vector-effect", "non-scaling-stroke")
+      .style("stroke-width", 2)
+      .attr("transform", "translate(" + d.x + "," + d.y + ") scale(" + d.r + ")")
+      .style("opacity", 0)
+      .transition()
+      .duration(step)
+      .style("opacity", 1);
+    }
+  })
+
+}
+
+function circlePack11() {
+    d3.select("g.circlepack")
+    .selectAll("path")
+    .transition()
+    .duration(step)
+    .style("opacity", 0)
+    .remove();
+
+    d3.select("g.circlepack")
+    .selectAll("circle")
+    .transition()
+    .duration(step)
+    .style("opacity", 1)
+  .style("fill", function (d, i) {
+    var fillColor = colors(i);
+    if (d.depth === 3) {
+      fillColor = leafColorAV(d.node.gdp);
+    }
+
+    if (d.depth === 2) {
+      fillColor = colorHash[d.key];
+    }
+
+    if (d.depth === 1) {
+      fillColor = "#E1E1D3";
+   }
+
+    if (d.depth === 0) {
+      fillColor = "#EFEFF3";
+    }
+    return fillColor;
+  })
+    .style("fill-opacity", function (d) {return d.depth == 0 || d.depth == 3 ? 0 : 1})
+    .style("stroke-opacity", function (d) {return d.depth == 0 || d.depth == 1 ? 0 : 1})
+
+}
+
+function circlePack12() {
+    d3.select("g.circlepack")
+    .selectAll("circle")
+    .transition()
+    .duration(step)
+  .style("stroke-width", function (d, i) {
+    var strokeWidth = 1;
+    if (d.depth === 3) {
+      strokeWidth = deviationScale(d.stdval);
+    }
+    return strokeWidth;
+  });
+
+}
+
+function circlePack13() {
+    d3.select("g.circlepack")
+    .selectAll("circle")
+    .transition()
+    .duration(step)
+    .style("stroke-opacity", 0);
+
+  packChart(packableData)
+    .forEach(function (d, i) {
+
+      d.norenderfill = true;
+      if (d.depth === 3) {
+      var gThis = d3.select("g.circlepack")
+        .append("g")
+        .attr("class", "sketchyCircle")
+        .data([d])
+        .attr("transform", function (d) {return "translate(" + d.x + "," + d.y + ")"});
+
+        d.norenderstroke = false;
+        d.sketchiness = d.stdval ? deviationScale(d.stdval) : 0;
+        sketchyFullCircle(d, i, colors, leafColors, gThis);
+      }
+  });
+
+  d3.selectAll("path")
+  .attr("stroke-dasharray", function () {return "0," + this.getTotalLength()})
+  .transition()
+  .delay(function (d,i) {return i * 5})
+      .transition()
+      .duration(function (d, i) {return step - (i * 5)})
+      .attrTween("stroke-dasharray", tweenDash);
+
+}
+
+function circlePack14() {
+
+  packChart = d3.layout.pack();
+  packChart.size([1000,1000])
+  .children(function(d) {return d.values})
+  .padding(0)
+  .value(function(d) {return d.node ? d.node.pop === 0 ? 5000000 : d.node.pop : undefined})
+
+  newNested = nestingSecond(mainData);
+
+  d3.select("g.circlepack")
+  .selectAll("circle")
+  .data(packChart(newNested), function (d) {return d.node ? d.node.iso : d.id})
+  .transition()
+  .duration(step)
+  .attr("cx", function (d) {return d.x})
+  .attr("cy", function (d) {return d.y})
+  .attr("r", function (d) {return d.r});
+
+  d3.selectAll("g.sketchyCircle")
+    .transition()
+    .duration(step)
+    .attr("transform", function (d) {return "translate(" + d.x + "," + d.y + ")"});
+
+  d3.select("g.circlepack")
+  .selectAll("circle")
+  .data(packChart(newNested), function (d) {return d.node ? d.node.iso : d.id})
+  .enter()
+  .insert("circle", "text")
+  .style("opacity", 0)
+  .transition()
+  .duration(step)
+  .attr("cx", function (d) {return d.x})
+  .attr("cy", function (d) {return d.y})
+  .attr("r", function (d) {return d.r})
+  .style("opacity", 1)
+  .style("fill", function (d, i) {
+    var fillColor = colors(i);
+    if (d.depth === 3) {
+      fillColor = leafColorAV(d.node.gdp);
+    }
+
+    if (d.depth === 1) {
+      fillColor = colorHash[d.key];
+    }
+
+    if (d.depth === 2) {
+      fillColor = "#E1E1D3";
+   }
+
+    if (d.depth === 0) {
+      fillColor = "#EFEFF3";
+    }
+    return fillColor;
+  })
+    .style("fill-opacity", function (d) {return d.depth == 0 || d.depth == 3 ? 0 : 1});
+
+  d3.selectAll("circle").filter(function (d) {return d.depth === 3})
+  .each(function () {
+    this.parentNode.appendChild(this);
+  })
+
+  d3.select("g.circlepack")
+  .selectAll("circle")
+  .data(packChart(newNested), function (d) {return d.node ? d.node.iso : d.id})
+  .exit()
+  .transition()
+  .duration(step)
+  .style("opacity", 0)
+  .remove()
+
+ d3.select("g.circlepack")
+  .selectAll("text.bg")
+  .remove();
+
+  d3.select("g.circlepack")
+  .selectAll("text.fg")
+  .remove();
+
+  d3.select("g.legendQuant")
+  .transition()
+  .duration(step)
+  .attr("transform", "translate(100,890)");
+
+  d3.select("g.legendSize")
+  .transition()
+  .duration(step)
+  .attr("transform", "translate(340,940)");
+
+}
+
+function circlePack15() {
+   d3.select("g.circlepack")
+  .selectAll("text.bg")
+  .data(packChart(newNested), function (d) {return d.node ? d.node.iso : d.id})
+  .enter()
+  .append("text")
+  .attr("class", "bg")
+  .style("display", function (d) {return d.r > 20 ? "block" : "none"})
+  .style("text-anchor", "middle")
+  .attr("x", function (d) {return d.x})
+  .attr("y", function (d) {return d.y - (d.r * (1.2 - (d.depth * 0.2)))})
+  .style("font-size", function (d) {return d.r / 4})
+  .style("stroke", "white")
+  .style("fill", "white")
+  .style("stroke-width", "2px")
+  .style("opacity", 0)
+  .text(function (d) {return d.node ? d.node.label : d.key})
+  .transition().duration(step)
+  .style("opacity", .8)
+
+
+  d3.select("g.circlepack")
+  .selectAll("text.fg")
+  .data(packChart(newNested), function (d) {return d.node ? d.node.iso : d.id})
+  .enter()
+  .append("text")
+  .attr("class", "fg")
+  .style("display", function (d) {return d.r > 20 ? "block" : "none"})
+  .style("text-anchor", "middle")
+  .attr("x", function (d) {return d.x})
+  .attr("y", function (d) {return d.y - (d.r * (1.2 - (d.depth * 0.2)))})
+  .style("font-size", function (d) {return d.r / 4})
+  .style("opacity", 0)
+  .text(function (d) {return d.node ? d.node.label : d.key})
+  .transition().duration(step)
+  .style("opacity", 1)
+}
+
+function circlePack16() {
+  d3.select("g.circlepack")
+    .selectAll("circle").filter(function (d) {return d.depth === 2})
+    .transition()
+    .duration(step)
+    .style("fill", function (d) {return d3.hsl(colorHash[d.parent.key]).brighter(0.4)} );
+}
+
+function circlePack17() {
+  d3.select("g.circlepack")
+    .selectAll("circle").filter(function (d) {return d.depth === 2})
+    .transition()
+    .duration(step)
+    .style("fill", "white")
+    .style("fill-opacity", 0.3);
+}
+
+function circlePack18() {
+  d3.select("g.circlepack")
+    .selectAll("circle").filter(function (d) {return d.depth === 2})
+    .transition()
+    .duration(step)
+    .style("fill-opacity", 0);
+
+  d3.select("g.circlepack")
+    .selectAll("path")
+    .transition()
+    .duration(step)
+    .style("stroke", "white");
+}
+function circlePack19() {
+  var svg = d3.select("svg");
+
+  var verySketch = sketchy.circleStroke({svg: svg, x:0, y:0, r: 25, density:3, sketch: 3});
+  var moderateSketch = sketchy.circleStroke({svg: svg, x:0, y:0, r: 25, density:1.5, sketch: 1.25});
+  var leastSketch = sketchy.circleStroke({svg: svg, x:0, y:0, r: 25, density:1, sketch: 0.5});
+
+var symbolScale =  d3.scale.ordinal()
+  .domain(['small','moderate','high'])
+  .range([ leastSketch, moderateSketch, verySketch] );
+
+svg.append("g")
+  .attr("class", "legendSymbol")
+  .attr("transform", "translate(870, 929)");
+
+var legendPath = d3.legend.symbol()
+  .scale(symbolScale)
+  .orient("horizontal");
+
+svg.select(".legendSymbol")
+  .call(legendPath)
+  .selectAll("path")
+  .style("fill", "none")
+  .style("stroke", "black")
+  .style("stroke-width", "1px");
+
+  svg.select(".legendSymbol").selectAll("path")
+  .attr("stroke-dasharray", function () {return "0," + this.getTotalLength()})
+  .transition()
+  .delay(function (d,i) {return i * 300})
+      .transition()
+      .duration(function (d, i) {return step - (i * 300)})
+      .attrTween("stroke-dasharray", tweenDash);
+
+}
+
+function circlePack20() {
+
+  d3.select("g.circlepack")
+  .transition()
+  .duration(step)
+  .attr("transform", "translate(20,-20)")
+
+  d3.select("g.circlepack")
+  .append("text")
+  .style("font-size", "72px")
+  .style("text-anchor", "middle")
+  .text("Labor Force Aged 15-24")
+  .attr("x", 500)
+  .attr("y", 110)
+  .style("opacity", 0)
+  .transition()
+  .duration(step)
+  .style("opacity", 1);
+
+  d3.select("g.circlepack")
+  .append("text")
+  .style("font-size", "24px")
+  .style("text-anchor", "middle")
+  .text("Year to Year Variability")
+  .attr("x", 930)
+  .attr("y", 870)
+  .style("opacity", 0)
+  .transition()
+  .duration(step)
+  .style("opacity", 1);
+
+  d3.select("g.circlepack")
+  .append("text")
+  .style("font-size", "24px")
+  .style("text-anchor", "middle")
+  .text("Population Size")
+  .attr("x", 550)
+  .attr("y", 870)
+    .style("opacity", 0)
+    .transition()
+    .duration(step)
+    .style("opacity", 1);
+
+  d3.select("g.circlepack")
+  .append("text")
+  .style("font-size", "24px")
+  .style("text-anchor", "middle")
+  .text("% Aged 15-24 in Labor Force")
+  .attr("x", 140)
+  .attr("y", 870)
+    .style("opacity", 0)
+    .transition()
+    .duration(step)
+    .style("opacity", 1);
+
+  d3.select("g.circlepack")
+  .append("text")
+  .style("font-size", "12px")
+  .style("font-weight", 700)
+  .style("text-anchor", "end")
+  .text("source: International Labour Organization")
+  .attr("x", 1080)
+  .attr("y", 1090)
+    .style("opacity", 0)
+    .transition()
+    .duration(step)
+    .style("opacity", 1);
+
+}
+
+function circlePackBad() {
+  var colors = d3.scale.category20();
+
+  d3.selectAll("circle")
+  .style("fill", function (d) {return colors(d.depth)})
+
+  d3.select("g.circlepack")
+  .selectAll("text")
+  .data(packChart(packableData), function (d) {return d.node ? d.node.iso : d.id})
+  .enter()
+  .append("text")
+  .attr("x", function (d) {return d.x})
+  .attr("y", function (d) {return d.y})
+  .style("font-size", "12px")
+  .style("opacity", 0)
+  .text(function (d) {return d.node ? d.node.iso : d.id})
+  .transition().duration(step)
+  .style("opacity", .8)
+
+}
+
+setTimeout(circlePack1, step);
+setTimeout(circlePack2, step * 2);
+setTimeout(circlePack3, step * 3);
+setTimeout(circlePack4, step * 4);
+setTimeout(circlePack5, step * 5);
+setTimeout(circlePack6, step * 6);
+setTimeout(circlePack7, step * 7);
+setTimeout(circlePack8, step * 8);
+setTimeout(circlePack9, step * 9);
+setTimeout(circlePack10, step * 10);
+setTimeout(circlePack11, step * 11);
+setTimeout(circlePack12, step * 12);
+setTimeout(circlePack13, step * 13);
+setTimeout(circlePack14, step * 15);
+setTimeout(circlePack15, step * 16);
+setTimeout(circlePack16, step * 17);
+setTimeout(circlePack17, step * 18);
+setTimeout(circlePack18, step * 19);
+setTimeout(circlePack19, step * 20);
+setTimeout(circlePack20, step * 21);
+
+</script>
+<body>
+<div id="viz">
+  <svg style="background:white;" height=1100 width=1100>
+  </svg>
+</div>
+<footer>
+</footer>
+</body>
+</html>

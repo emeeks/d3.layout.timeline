@@ -1,0 +1,77 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Timeline with Procedural Data</title>
+  <meta charset="utf-8" />
+    <style type="text/css">
+      svg {
+        height: 1100px;
+        width: 1100px;
+      }
+      div.viz {
+        height: 1000px;
+        width: 1000px;
+      }
+      </style>
+</head>
+
+<script src="http://d3js.org/d3.v3.min.js" type="text/JavaScript"></script>
+<script src="../d3.layout.timeline.js" charset="utf-8" type="text/javascript"></script>
+
+<script>
+var timelineData = [];
+
+var timeline = d3.layout.timeline()
+  .size([1000,300])
+  .bandStart(function (d) {return d.s})
+  .bandEnd(function (d) {return d.e})
+  .dateFormat(function (d) {return parseInt(d)})
+  .padding(5)
+  .extent([0,40])
+  .maxBandHeight(20);
+
+  addData()
+
+function addData() {
+  rando = Math.floor(Math.random() * 40);
+  rando2 = Math.floor(Math.random() * 20);
+  timelineData.push({s: rando, e: Math.min(40, rando + rando2)});
+
+  timelineBands = timeline(timelineData);
+
+  d3.select("svg").selectAll("rect")
+  .data(timelineBands)
+  .enter()
+  .append("rect")
+  .attr("x", 50)
+  .attr("y", 50)
+  .style("fill-opacity", 0);
+
+  var size = timelineBands.length;
+
+  d3.selectAll("rect")
+  .transition()
+  .duration(400)
+  .attr("x", function (d) {return d.start})
+  .attr("y", function (d) {return d.y})
+  .attr("height", function (d) {return d.dy})
+  .attr("width", function (d) {return d.end - d.start})
+  .style("fill", "#b0909d")
+  .style("fill-opacity", function (d, i) {return Math.max(0.05, 1 - ((size - i) * .01))});
+
+  if (size < 100)
+  {
+    setTimeout(addData, 500);
+  }
+
+}
+
+</script>
+<body>
+<div id="viz">
+  <svg style="background:white;" height=1100 width=1100>
+  </svg>
+</div>
+<footer>
+</footer>
+</body>
+</html>

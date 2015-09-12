@@ -1,0 +1,73 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Categorized Timeline with Dates</title>
+  <meta charset="utf-8" />
+    <style type="text/css">
+      svg {
+        height: 1100px;
+        width: 1100px;
+      }
+      div.viz {
+        height: 1000px;
+        width: 1000px;
+      }
+      </style>
+</head>
+
+<script src="http://d3js.org/d3.v3.min.js" type="text/JavaScript"></script>
+<script src="../d3.layout.timeline.js" charset="utf-8" type="text/javascript"></script>
+
+<script>
+
+types = ["European","Native","Colonial","Latin America","Internal"];
+
+colorScale = d3.scale.ordinal()
+  .domain(types)
+  .range(["#96abb1", "#313746", "#b0909d", "#687a97", "#292014"]);
+
+d3.csv("wars.csv", function (csv) {
+  var timeline = d3.layout.timeline()
+    .size([500,80])
+    .extent(["7-4-1776", "12-31-1876"])
+    .padding(3)
+    .maxBandHeight(20);
+
+types.forEach(function (type, i) {
+  onlyThisType = csv.filter(function(d) {return d.sphere === type});
+
+  theseBands = timeline(onlyThisType);
+
+  d3.select("svg").append("g")
+  .attr("transform", "translate(100," + (35 + (i * 90)) + ")")
+  .selectAll("rect")
+  .data(theseBands)
+  .enter()
+  .append("rect")
+  .attr("rx", 2)
+  .attr("x", function (d) {return d.start})
+  .attr("y", function (d) {return d.y})
+  .attr("height", function (d) {return d.dy})
+  .attr("width", function (d) {return d.end - d.start})
+  .style("fill", function (d) {return colorScale(d.sphere)})
+  .style("stroke", "black")
+  .style("stroke-width", 1);
+
+  d3.select("svg").append("text")
+  .text(type)
+  .attr("y", 50 + (i * 90))
+  .attr("x", 20)
+
+})
+
+})
+
+</script>
+<body>
+<div id="viz">
+  <svg style="background:white;" height=1100 width=1100>
+  </svg>
+</div>
+<footer>
+</footer>
+</body>
+</html>

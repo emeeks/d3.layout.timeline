@@ -1,0 +1,52 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Timeline with Integers</title>
+  <meta charset="utf-8" />
+    <style type="text/css">
+      svg {
+        height: 1100px;
+        width: 1100px;
+      }
+      div.viz {
+        height: 1000px;
+        width: 1000px;
+      }
+      </style>
+</head>
+
+<script src="http://d3js.org/d3.v3.min.js" type="text/JavaScript"></script>
+<script src="../d3.layout.timeline.js" charset="utf-8" type="text/javascript"></script>
+
+<script>
+
+var timeline = d3.layout.timeline()
+  .size([1000,300])
+  .bandStart(function (d) {return d.s})
+  .bandEnd(function (d) {return d.e})
+  .dateFormat(function (d) {return parseInt(d)})
+
+d3.csv("int_bands.csv", function (csv) {
+  timelineBands = timeline(csv);
+
+  d3.select("svg").selectAll("rect")
+  .data(timelineBands)
+  .enter()
+  .append("rect")
+  .attr("x", function (d) {return d.start})
+  .attr("y", function (d) {return d.y})
+  .attr("height", function (d) {return d.dy})
+  .attr("width", function (d) {return d.end - d.start})
+  .style("fill", "#687a97")
+  .style("stroke", "black")
+})
+
+</script>
+<body>
+<div id="viz">
+  <svg style="background:white;" height=1100 width=1100>
+  </svg>
+</div>
+<footer>
+</footer>
+</body>
+</html>

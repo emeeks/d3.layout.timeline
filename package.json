@@ -1,0 +1,33 @@
+{
+  "name": "d3-layout-timeline",
+  "version": "1.0.0",
+  "description": "A layout for producing band-style timelines",
+  "main": "index.js",
+  "keywords": [
+    "d3",
+    "layout"
+  ],
+  "directories": {
+    "examples": "examples"
+  },
+  "dependencies": {
+    "d3": "^3.5.6"
+  },
+  "devDependencies": {
+  },
+  "scripts": {
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emeeks/d3.layout.timeline"
+  },
+  "author": {
+    "name": "Elijah Meeks",
+    "url": "http://www.elijahmeeks.com"
+  },
+  "license": "Unlicense",
+  "bugs": {
+    "url": "https://github.com/emeeks/d3.layout.timeline/issues"
+  },
+  "homepage": "https://github.com/emeeks/d3.layout.timeline"
+}
