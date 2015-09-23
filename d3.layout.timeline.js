@@ -9,23 +9,71 @@ d3.layout.timeline = function() {
     var timelineExtent = [-Infinity, Infinity];
     var setExtent = [];
     var displayScale = d3.scale.linear();
-    var swimlanes = [];
+    var swimlanes = {root: []};
+    var swimlaneNumber = 1;
     var padding = 0;
     var fixedExtent = false;
     var maximumHeight = Infinity;
+    var childAccessor = function (d) {return null};
+    var bandID = 1;
+    var projectedHierarchy = {id: "root", values: []};
 
-    function processTimelines() {
+    function processTimelines(timelines, parentBand) {
+
+        if (!Array.isArray(timelines) && Array.isArray(childAccessor(timelines))) {
+            var rootnode = {id: 0, level: 0};
+            for (var x in timelines) {
+                if (timelines.hasOwnProperty(x)) {
+                    rootnode[x] = timelines[x];
+                }
+            }
+            rootnode.id = 0;
+            rootnode.level = 0;
+            rootnode.values = [];
+            projectedHierarchy = rootnode;
+            processTimelines(childAccessor(timelines), rootnode);
+            rootnode.start = d3.min(rootnode.values, function (d) {return d.start});
+            rootnode.end = d3.max(rootnode.values, function (d) {return d.end});
+            processedTimelines.push(rootnode);
+
+            return;
+        }
+
     	timelines.forEach(function (band) {
-    		var projectedBand = {};
+            var projectedBand = {level: 0, id: bandID};
+
+            if (parentBand !== undefined) {
+                projectedBand.parent = parentBand;
+            }
+            bandID++;
+
             for (var x in band) {
                 if (band.hasOwnProperty(x)) {
                     projectedBand[x] = band[x];
                 }
             }
-    		projectedBand.start = dateAccessor(startAccessor(band));
-    		projectedBand.end = dateAccessor(endAccessor(band));
+
+            if (Array.isArray(childAccessor(band))) {
+                processTimelines(childAccessor(band), projectedBand);
+                projectedBand.start = d3.min(projectedBand.values, function (d) {return d.start});
+                projectedBand.end = d3.max(projectedBand.values, function (d) {return d.end});
+            }
+            else {
+                projectedBand.start = dateAccessor(startAccessor(band));
+                projectedBand.end = dateAccessor(endAccessor(band));
+            }
+
     		projectedBand.lane = 0;
     		processedTimelines.push(projectedBand);
+            if (parentBand) {
+                if (!parentBand.values) {
+                    parentBand.values = [];
+                }
+                parentBand.values.push(projectedBand);
+            }
+            if (parentBand === undefined) {
+                projectedHierarchy.values.push(projectedBand);
+            }
     	});
     }
 
@@ -50,6 +98,7 @@ d3.layout.timeline = function() {
     }
 
     function fitsIn(lane, band) {
+
     	if (lane.end < band.start || lane.start > band.end) {
     		return true;
     	}
@@ -62,64 +111,106 @@ d3.layout.timeline = function() {
 
     function findlane(band) {
     	//make the first array
-    	if (swimlanes[0] === undefined) {
-    		swimlanes[0] = [band];
-    		return;
-    	}
-    	var l = swimlanes.length - 1;
+        var swimlane = swimlanes["root"];
+        if (band.parent) {
+            swimlane = swimlanes[band.parent.id];
+        }
+
+        if (swimlane === undefined) {
+            swimlanes[band.parent.id] = [[band]];
+            swimlane = swimlanes[band.parent.id];
+            swimlaneNumber++;
+            return;
+        }
+    	var l = swimlane.length - 1;
     	var x = 0;
 
     	while (x <= l) {
-    		if (fitsIn(swimlanes[x], band)) {
-    			swimlanes[x].push(band);
+    		if (fitsIn(swimlane[x], band)) {
+    			swimlane[x].push(band);
     			return;
     		}
     		x++;
     	}
-    	swimlanes[x] = [band];
+    	swimlane[x] = [band];
     	return;
     }
 
     function timeline(data) {
     	if (!arguments.length) return timeline;
 
-    	timelines = data;
+        projectedHierarchy = {id: "root", values: []};
 
     	processedTimelines = [];
-    	swimlanes = [];
+    	swimlanes = {root: []};
 
-    	processTimelines();
-        projectTimelines();
-
+    	processTimelines(data);
+        projectTimelines(data);
 
     	processedTimelines.forEach(function (band) {
     		findlane(band);
     	});
 
-    	var height = size[1] / swimlanes.length;
-    	height = Math.min(height, maximumHeight);
+        for (var x in swimlanes) {
+            swimlanes[x].forEach(function (lane, i) {
+                var height = size[1] / swimlanes[x].length;
+                height = Math.min(height, maximumHeight);
+                lane.forEach(function (band) {
+                    band.y = i * (height) + (padding / 2);
+                    band.dy = height - padding;
+                    band.lane = i;
+                    band.dyp = 1 / swimlanes[x].length;
+                });
+            });
+        }
 
-    	swimlanes.forEach(function (lane, i) {
-    		lane.forEach(function (band) {
-    			band.y = i * (height);
-    			band.dy = height - padding;
-    			band.lane = i;
-    		});
-    	});
+        projectedHierarchy.values.forEach(relativePosition);
+
+        processedTimelines.sort(function (a, b) {
+                    if (a.level > b.level) {
+                        return 1;
+                    }
+                    if (a.level < b.level) {
+                        return -1;
+                    }
+                    return 1;
+                });
 
     	return processedTimelines;
     }
 
+    function relativePosition(band, i) {
+        if (!band.parent) {
+            band.level = 0;
+        }
+        else {
+            band.level = band.parent.level + 1;
+            var height = band.dyp * band.parent.dy;
+            band.y = band.parent.y + (band.lane * height) + (padding / 2);
+            band.dy = Math.max(1, height - padding);
+
+        }
+        if (band.values) {
+            band.values.forEach(relativePosition);
+        }
+    }
+
+    timeline.childAccessor = function (_x) {
+        if (!arguments.length) return childAccessor;
+           childAccessor = _x;
+        return timeline;
+    }
+
     timeline.dateFormat = function (_x) {
-	     if (!arguments.length) return dateAccessor;
-	     dateAccessor = _x;
-    	return timeline;
+    	if (!arguments.length) return dateAccessor;
+    	   dateAccessor = _x;
+        return timeline;
     }
 
     timeline.bandStart = function (_x) {
-	     if (!arguments.length) return startAccessor;
-	     startAccessor = _x;
-    	return timeline;
+    	if (!arguments.length) return startAccessor;
+    	   startAccessor = _x;
+        return timeline;
     }
 
     timeline.bandEnd = function (_x) {

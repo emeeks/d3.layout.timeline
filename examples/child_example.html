@@ -1,0 +1,79 @@
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <title>Timeline with Dates</title>
+  <meta charset="utf-8" />
+    <style type="text/css">
+      svg {
+        height: 1100px;
+        width: 1100px;
+      }
+      div.viz {
+        height: 1000px;
+        width: 1000px;
+      }
+      </style>
+</head>
+
+<script src="http://d3js.org/d3.v3.min.js" charset="utf-8" type="text/javascript"></script>
+<script src="../d3.layout.timeline.js" charset="utf-8" type="text/javascript"></script>
+
+<script>
+
+var colors = d3.scale.category10();
+
+var timeline = d3.layout.timeline()
+  .size([1000,400])
+  .dateFormat(function (d) {return d})
+  .childAccessor(function (d) {return d.children})
+  .padding(2);
+
+colors = d3.scale.ordinal()
+  .range(["#6798c1", "#677468", "#d7ce85", "#bf4730", "#9c5166"]);
+
+d3.json("art_movements.json", function (json) {
+  timelineBands = timeline(json);
+
+  d3.select("svg").selectAll("g")
+  .data(timelineBands)
+  .enter()
+  .append("g")
+  .attr("class", "band")
+  .on("mouseover", function (d) {d3.selectAll("text").style("opacity", function (p) {return p.label === d.label ? 1 : 0})})
+  .on("mouseout", function (d) {d3.selectAll("text").style("opacity", 0)})
+
+  d3.selectAll("g.band")
+  .append("rect")
+  .attr("x", function (d) {return d.start})
+  .attr("y", function (d) {return d.y})
+  .attr("height", function (d) {return d.dy})
+  .attr("width", function (d) {return d.end - d.start})
+  .style("stroke-width", function (d) {return Math.max(0,(2 - d.level))})
+  .attr("rx", 3)
+  .style("fill", function (d) {return colors(d.level)})
+  .style("stroke", "black")
+
+  d3.select("svg")
+  .selectAll("text")
+  .data(timelineBands)
+  .enter()
+  .append("text")
+  .attr("x", function (d) {return (d.start + d.end) / 2})
+  .attr("y", function (d) {return d.y + (d.dy / 2)})
+  .text(function(d) {return d.label})
+  .style("opacity", 0)
+  .style("pointer-events", "none")
+  .style("text-anchor", "middle")
+  .style("font-size", "14px")
+
+})
+
+</script>
+<body>
+<div id="viz">
+  <svg style="background:white;" height=1100 width=1100>
+  </svg>
+</div>
+<footer>
+</footer>
+</body>
+</html>
