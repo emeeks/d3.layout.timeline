@@ -1,5 +1,3 @@
-var d3 = require('d3');
+timeline = require("./src/timeline");
 
-d3.layout.timeline = require('./src/timeline');
-
-module.exports = d3;
+module.exports = timeline;
